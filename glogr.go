@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/bketelsen/logr"
 	"github.com/golang/glog"
-	"github.com/thockin/logr"
 )
 
 // New returns a logr.Logger which is implemented by glog.
@@ -18,9 +18,14 @@ func New() (logr.Logger, error) {
 	}, nil
 }
 
+type field struct {
+	name  string
+	value interface{}
+}
 type glogger struct {
 	level  int
 	prefix string
+	fields []field
 }
 
 func prepend(prefix interface{}, args []interface{}) []interface{} {
@@ -46,12 +51,21 @@ func framesToCaller() int {
 
 func (l glogger) Info(args ...interface{}) {
 	if l.Enabled() {
+
+		if fs, ok := l.fieldString(); ok {
+			args = append(args, fs)
+		}
+
 		glog.InfoDepth(framesToCaller(), prepend(l.prefix, args)...)
 	}
 }
 
 func (l glogger) Infof(format string, args ...interface{}) {
 	if l.Enabled() {
+
+		if fs, ok := l.fieldString(); ok {
+			args = append(args, fs)
+		}
 		glog.InfoDepth(framesToCaller(), fmt.Sprintf("%s"+format, prepend(l.prefix, args)...))
 	}
 }
@@ -61,10 +75,18 @@ func (l glogger) Enabled() bool {
 }
 
 func (l glogger) Error(args ...interface{}) {
+
+	if fs, ok := l.fieldString(); ok {
+		args = append(args, fs)
+	}
 	glog.ErrorDepth(framesToCaller(), prepend(l.prefix, args)...)
 }
 
 func (l glogger) Errorf(format string, args ...interface{}) {
+
+	if fs, ok := l.fieldString(); ok {
+		args = append(args, fs)
+	}
 	glog.ErrorDepth(framesToCaller(), fmt.Sprintf("%s"+format, prepend(l.prefix, args)...))
 }
 
@@ -80,6 +102,28 @@ func (l glogger) NewWithPrefix(prefix string) logr.Logger {
 		level:  l.level,
 		prefix: prefix,
 	}
+}
+
+func (l glogger) WithField(name string, value interface{}) logr.Logger {
+	return glogger{
+		level:  l.level,
+		prefix: l.prefix,
+		fields: append(l.fields, field{name: name, value: value}),
+	}
+}
+
+func (l glogger) fieldString() (string, bool) {
+	if len(l.fields) > 0 {
+		var buf []byte
+		for _, f := range l.fields {
+			buf = append(buf, ' ')
+			buf = append(buf, []byte(toString(f.name))...)
+			buf = append(buf, []byte(":")...)
+			buf = append(buf, []byte(toString(f.value))...)
+		}
+		return string(buf), true
+	}
+	return "", false
 }
 
 var _ logr.Logger = glogger{}
